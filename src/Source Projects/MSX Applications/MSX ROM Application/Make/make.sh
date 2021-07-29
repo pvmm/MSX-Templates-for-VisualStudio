@@ -11,6 +11,8 @@ IFS=$' \t\r\n'
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 MSX_BUILD_DATETIME=$(date)
 
+MAKEBIN=makebin # on Fedora change this to sdcc-makebin
+DD=dd
 MSX_FILE_NAME=MSXAPP
 PROFILE=$1
 MSX_OBJ_PATH=$PROFILE/objs
@@ -22,6 +24,7 @@ OBJLIST=
 INCDIRS=
 
 BIN_SIZE=
+MAX_SIZE=65536
 FILE_START=0x0100
 CODE_LOC=
 DATA_LOC=0
@@ -225,9 +228,11 @@ application_settings() {
                 FILE_START=$REST
             elif [[ $HEAD == 'ROM_SIZE' ]]; then
                 if [[ $REST == '16k' ]]; then
-                    BIN_SIZE=4000
+                    BIN_SIZE=16384
+                    BIN_START=32768
                 else
-                    BIN_SIZE=8000
+                    BIN_SIZE=32768
+                    BIN_START=16384
                 fi
             elif [[ $HEAD == 'CODE_LOC' ]]; then
                 CODE_LOC=$REST
@@ -427,8 +432,8 @@ compile () {
             done < "$FILE"
         done
 
-		HEADER_SIZE=$(printf '0x%04x' "$HEADER_SIZE_DEC")
-		CODE_LOC=$(printf '0x%04x' "$CODE_LOC_DEC")
+        HEADER_SIZE=$(printf '0x%04x' "$HEADER_SIZE_DEC")
+        CODE_LOC=$(printf '0x%04x' "$CODE_LOC_DEC")
         debug $DBG_OUTPUT FILE_START is $FILE_START.
         debug $DBG_OUTPUT _HEADER segment size is $HEADER_SIZE.
         debug $DBG_OUTPUT CODE-LOC determined to be $CODE_LOC.
@@ -445,9 +450,13 @@ build_msx_bin () {
     debug $DBG_STEPS -------------------------------------------------------------------------------
     debug $DBG_STEPS Build MSX binary...
     if [[ -z $BIN_SIZE ]]; then
-        _exec $DBG_CALL2 hex2bin -e $MSX_FILE_EXTENSION "'$MSX_OBJ_PATH/$MSX_FILE_NAME.ihx'"
+        _exec $DBG_CALL2 $MAKEBIN -s $MAX_SIZE "'$MSX_OBJ_PATH/$MSX_FILE_NAME.ihx'" "'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.tmp'"
+        _exec $DBG_CALL2 $DD skip=16384 count=32768 if="'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.tmp'" of="'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.$MSX_FILE_EXTENSION'" bs=1 status=none
+        _exec $DBG_CALL2 rm "'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.tmp'"
     else
-        _exec $DBG_CALL2 hex2bin -e $MSX_FILE_EXTENSION -l $BIN_SIZE "'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.ihx'"
+        _exec $DBG_CALL2 $MAKEBIN -s $MAX_SIZE "'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.ihx'" "'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.tmp'"
+        _exec $DBG_CALL2 $DD skip=$BIN_START count=$BIN_SIZE if="'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.tmp'" of="'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.$MSX_FILE_EXTENSION'" bs=1 status=none
+        _exec $DBG_CALL2 rm "'$MSX_OBJ_PATH'/'$MSX_FILE_NAME.tmp'"
     fi
     debug $DBG_STEPS Done building MSX binary.
     
